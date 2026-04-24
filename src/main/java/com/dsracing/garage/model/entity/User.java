@@ -15,7 +15,11 @@ public class User {
 
     @OneToMany(mappedBy = "owner", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Garage> garages;
+    @Column(nullable = false)
+    private String password;
 
+    public String getPassword() { return password; }
+    public void setPassword(String password) { this.password = password; }
     // getters y setters
 
     public Long getId() {
@@ -57,4 +61,6 @@ public class User {
     public void setGarages(List<Garage> garages) {
         this.garages = garages;
     }
+
+
 }

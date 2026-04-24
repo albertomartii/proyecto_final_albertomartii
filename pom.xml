@@ -4,12 +4,11 @@
 
     <modelVersion>4.0.0</modelVersion>
 
-    <!-- MUY IMPORTANTE: el parent de Spring Boot -->
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
         <version>3.2.4</version>
-        <relativePath/> <!-- busca en repositorio -->
+        <relativePath/>
     </parent>
 
     <groupId>com.dsracing</groupId>
@@ -20,6 +19,7 @@
 
     <properties>
         <java.version>17</java.version>
+        <javafx.version>21.0.2</javafx.version>
     </properties>
 
     <dependencies>
@@ -49,6 +49,23 @@
             <artifactId>jackson-databind</artifactId>
         </dependency>
 
+        <!-- JAVAFX -->
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-controls</artifactId>
+            <version>${javafx.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-fxml</artifactId>
+            <version>${javafx.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-graphics</artifactId>
+            <version>${javafx.version}</version>
+        </dependency>
+
         <!-- TESTING -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -60,10 +77,24 @@
 
     <build>
         <plugins>
-            <!-- PLUGIN DE SPRING BOOT -->
+            <!-- SPRING BOOT: apunta a Launcher, NO a GarageApplication -->
+            <!-- Esto es OBLIGATORIO para que JavaFX funcione con fat JAR -->
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <mainClass>com.dsracing.garage.Launcher</mainClass>
+                </configuration>
+            </plugin>
+
+            <!-- JAVAFX MAVEN PLUGIN (para mvn javafx:run) -->
+            <plugin>
+                <groupId>org.openjfx</groupId>
+                <artifactId>javafx-maven-plugin</artifactId>
+                <version>0.0.8</version>
+                <configuration>
+                    <mainClass>com.dsracing.garage.Launcher</mainClass>
+                </configuration>
             </plugin>
         </plugins>
     </build>
