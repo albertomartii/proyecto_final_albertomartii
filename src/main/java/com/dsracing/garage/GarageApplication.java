@@ -2,6 +2,7 @@ package com.dsracing.garage;
 
 import com.dsracing.garage.model.entity.Car;
 import com.dsracing.garage.repository.CarRepository;
+import com.dsracing.garage.repository.PartRepository;
 import com.dsracing.garage.service.GarageService;
 import com.dsracing.garage.service.impl.DynoService;
 import com.dsracing.garage.ui.fx.controllers.DynoController;
@@ -49,7 +50,8 @@ public class GarageApplication extends Application {
         DynoService dynoService = springContext.getBean(DynoService.class);
 
         GarageService garageService = springContext.getBean(GarageService.class);
-        LoginController loginController = new LoginController(userService, carService, dynoService, garageService);
+        PartRepository partRepository = springContext.getBean(PartRepository.class);
+        LoginController loginController = new LoginController(userService, carService, dynoService, garageService, partRepository);
         loginController.show(primaryStage);
     }
 

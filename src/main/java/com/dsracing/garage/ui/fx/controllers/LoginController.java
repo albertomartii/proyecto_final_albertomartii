@@ -3,6 +3,7 @@ package com.dsracing.garage.ui.fx.controllers;
 import com.dsracing.garage.model.entity.Car;
 import com.dsracing.garage.model.entity.Garage;
 import com.dsracing.garage.model.entity.User;
+import com.dsracing.garage.repository.PartRepository;
 import com.dsracing.garage.service.CarService;
 import com.dsracing.garage.service.GarageService;
 import com.dsracing.garage.service.UserService;
@@ -33,27 +34,30 @@ public class LoginController {
 
     // ── Coches de serie ───────────────────────────────────────────────────────
     private static final String[][] STARTER_CARS = {
-            {"Nissan",  "S13",         "1992", "200", "250", "1200", "1.0", "0.50"},
+            {"Nissan",  "S13",          "1992", "200", "250", "1200", "1.0", "0.50"},
             {"Honda",   "Civic Type R", "2001", "185", "190", "1100", "1.0", "0.62"},
-            {"Subaru",  "Impreza WRX", "2003", "230", "310", "1400", "1.0", "0.55"}
+            {"Subaru",  "Impreza WRX",  "2003", "230", "310", "1400", "1.0", "0.55"}
     };
 
     // ── Dependencias ──────────────────────────────────────────────────────────
-    private Stage       stage;
-    private User        currentUser; // guardamos el usuario para recargar la vista
-    private final UserService   userService;
-    private final CarService    carService;
-    private final DynoService   dynoService;
-    private final GarageService garageService;
+    private Stage        stage;
+    private User         currentUser;
+    private final UserService    userService;
+    private final CarService     carService;
+    private final DynoService    dynoService;
+    private final GarageService  garageService;
+    private final PartRepository partRepository; // ← NUEVO
 
     public LoginController(UserService userService,
                            CarService carService,
                            DynoService dynoService,
-                           GarageService garageService) {
-        this.userService   = userService;
-        this.carService    = carService;
-        this.dynoService   = dynoService;
-        this.garageService = garageService;
+                           GarageService garageService,
+                           PartRepository partRepository) {  // ← NUEVO parámetro
+        this.userService    = userService;
+        this.carService     = carService;
+        this.dynoService    = dynoService;
+        this.garageService  = garageService;
+        this.partRepository = partRepository;
     }
 
     // ════════════════════════════════════════════════════════════════════════
@@ -111,7 +115,10 @@ public class LoginController {
         btnLogin.setOnAction(e -> {
             String user = userField.getText().trim();
             String pass = passField.getText();
-            if (user.isEmpty() || pass.isEmpty()) { errorLabel.setText("Rellena todos los campos."); return; }
+            if (user.isEmpty() || pass.isEmpty()) {
+                errorLabel.setText("Rellena todos los campos.");
+                return;
+            }
             Optional<User> result = userService.login(user, pass);
             if (result.isPresent()) {
                 showGarageScene(result.get());
@@ -124,8 +131,14 @@ public class LoginController {
         btnRegister.setOnAction(e -> {
             String user = userField.getText().trim();
             String pass = passField.getText();
-            if (user.isEmpty() || pass.isEmpty()) { errorLabel.setText("Rellena todos los campos."); return; }
-            if (userService.existsByUsername(user)) { errorLabel.setText("Ese usuario ya existe."); return; }
+            if (user.isEmpty() || pass.isEmpty()) {
+                errorLabel.setText("Rellena todos los campos.");
+                return;
+            }
+            if (userService.existsByUsername(user)) {
+                errorLabel.setText("Ese usuario ya existe.");
+                return;
+            }
             User newUser = userService.register(user, pass, user + "@dsracing.com");
             showGarageScene(newUser);
         });
@@ -199,11 +212,10 @@ public class LoginController {
     }
 
     // ════════════════════════════════════════════════════════════════════════
-    //  Tarjeta de coche existente — CON BOTÓN PIEZAS
+    //  Tarjeta de coche existente
     // ════════════════════════════════════════════════════════════════════════
 
     private HBox buildCarCard(Car car, User user) {
-        // ── Info ──────────────────────────────────────────────────────────
         Label name = new Label(car.getMake().toUpperCase() + "  " + car.getModel().toUpperCase());
         name.setFont(Font.font("Monospace", FontWeight.BOLD, 16));
         name.setTextFill(Color.web(TEXT_WHITE));
@@ -212,10 +224,7 @@ public class LoginController {
         yearLbl.setFont(Font.font("Monospace", 12));
         yearLbl.setTextFill(Color.web(TEXT_GRAY));
 
-        // Stats incluyendo piezas instaladas
-        double hp     = car.getBasePower();
-        double torque = car.getBaseTorque();
-        double mass   = car.getMass();
+        double hp = car.getBasePower(), torque = car.getBaseTorque(), mass = car.getMass();
         if (car.getParts() != null) {
             for (var p : car.getParts()) {
                 hp     += p.getHpDelta();
@@ -227,18 +236,15 @@ public class LoginController {
         stats.setFont(Font.font("Monospace", 11));
         stats.setTextFill(Color.web(TEXT_GRAY));
 
-        // Badge de piezas instaladas
         int partsCount = car.getParts() != null ? car.getParts().size() : 0;
-        Label partsBadge = new Label(partsCount + " pieza" + (partsCount != 1 ? "s" : "") + " instalada" + (partsCount != 1 ? "s" : ""));
+        Label partsBadge = new Label(partsCount + " pieza" + (partsCount != 1 ? "s" : "") +
+                " instalada" + (partsCount != 1 ? "s" : ""));
         partsBadge.setFont(Font.font("Monospace", 9));
         partsBadge.setTextFill(Color.web(partsCount > 0 ? "#00e676" : TEXT_GRAY));
 
         VBox info = new VBox(4, name, yearLbl, stats, partsBadge);
         info.setAlignment(Pos.CENTER_LEFT);
 
-        // ── Botones ───────────────────────────────────────────────────────
-
-        // Botón PIEZAS
         Button btnParts = new Button("⚙  PIEZAS");
         btnParts.setStyle(
                 "-fx-background-color:#1a1a2a; -fx-text-fill:#00c8ff;" +
@@ -247,7 +253,6 @@ public class LoginController {
                         "-fx-padding:9 16; -fx-border-radius:4; -fx-background-radius:4; -fx-cursor:hand;");
         btnParts.setOnAction(e -> openPartEditor(car, user));
 
-        // Botón DYNO TEST
         Button btnDyno = makeButton("▶  DYNO TEST", ACCENT_RED);
         btnDyno.setMaxWidth(140);
         btnDyno.setOnAction(e -> launchDyno(car));
@@ -267,13 +272,13 @@ public class LoginController {
     }
 
     // ════════════════════════════════════════════════════════════════════════
-    //  Abrir editor de piezas
+    //  Abrir editor de piezas — CORREGIDO: pasa partRepository
     // ════════════════════════════════════════════════════════════════════════
 
     private void openPartEditor(Car car, User user) {
         PartEditorController editor = new PartEditorController();
-        editor.show(car, carService, dynoService, savedCar -> {
-            // Al guardar, recargar la vista del garaje para reflejar cambios
+        editor.show(car, carService, dynoService, partRepository, savedCar -> {
+            // Recargar el garaje para reflejar los cambios guardados
             showGarageScene(user);
         });
     }
@@ -348,7 +353,8 @@ public class LoginController {
         car.setGarage(garage);
 
         Car saved = carService.save(car);
-        launchDyno(saved);
+        // Recargar el garaje para mostrar el coche recién añadido
+        showGarageScene(user);
     }
 
     private void launchDyno(Car car) {
