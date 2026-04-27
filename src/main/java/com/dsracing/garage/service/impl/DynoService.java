@@ -4,6 +4,7 @@ import com.dsracing.garage.model.entity.Car;
 import com.dsracing.garage.model.entity.DynoResult;
 import com.dsracing.garage.model.entity.Part;
 import org.springframework.stereotype.Service;
+
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -15,120 +16,58 @@ public class DynoService {
     private static final int RPM_MAX  = 8000;
     private static final int RPM_STEP = 250;
 
+    // ════════════════════════════════════════════════════════════════════════
+    //  API pública
+    // ════════════════════════════════════════════════════════════════════════
+
     public DynoResult runDyno(Car car, List<Part> parts) {
-        double maxPower  = car.getBasePower();
-        double maxTorque = car.getBaseTorque();
+        double maxPower  = totalPower(car, parts);
+        double maxTorque = totalTorque(car, parts);
+        double massKg    = totalMass(car, parts);
+        boolean hasTurbo = hasTurbo(parts);
 
-        if (parts != null) {
-            for (Part p : parts) {
-                maxPower  += p.getHpDelta();
-                maxTorque += p.getTorqueDelta();
-            }
-        }
-
+        // Calcular curvas
         Map<Integer, Double> powerCurve  = new TreeMap<>();
         Map<Integer, Double> torqueCurve = new TreeMap<>();
-
-        // Detectar si tiene turbo (afecta el perfil de la curva)
-        boolean hasTurbo = parts != null && parts.stream()
-                .anyMatch(p -> p.getType() != null &&
-                        p.getType().name().equals("TURBO"));
-
         for (int rpm = RPM_MIN; rpm <= RPM_MAX; rpm += RPM_STEP) {
-            double torqueAtRpm  = calcTorque(rpm, maxTorque, hasTurbo);
-            double powerAtRpm   = calcPower(rpm, torqueAtRpm);
-            torqueCurve.put(rpm, torqueAtRpm);
-            powerCurve.put(rpm, powerAtRpm);
+            double t = calcTorque(rpm, maxTorque, hasTurbo);
+            torqueCurve.put(rpm, t);
+            powerCurve.put(rpm, calcPower(rpm, t));
         }
 
-        // Escalar para que el pico de potencia coincida con maxPower
-        double peakPowerRaw = powerCurve.values().stream()
+        // Escalar al pico real
+        double peakRaw = powerCurve.values().stream()
                 .mapToDouble(Double::doubleValue).max().orElse(1.0);
-        double scaleFactor = maxPower / peakPowerRaw;
+        double scale = maxPower / peakRaw;
+        powerCurve.replaceAll((k, v) -> v * scale);
+        torqueCurve.replaceAll((k, v) -> v * scale);
 
-        Map<Integer, Double> scaledPower  = new TreeMap<>();
-        Map<Integer, Double> scaledTorque = new TreeMap<>();
-        for (int rpm = RPM_MIN; rpm <= RPM_MAX; rpm += RPM_STEP) {
-            scaledPower.put(rpm,  powerCurve.get(rpm)  * scaleFactor);
-            scaledTorque.put(rpm, torqueCurve.get(rpm) * scaleFactor);
-        }
+        double peakTorque = torqueCurve.values().stream()
+                .mapToDouble(Double::doubleValue).max().orElse(maxTorque);
 
         DynoResult result = new DynoResult();
         result.setMaxPower(maxPower);
-        result.setMaxTorque(scaledTorque.values().stream()
-                .mapToDouble(Double::doubleValue).max().orElse(maxTorque));
-        result.setPowerCurveJson(serializeCurveToJson(scaledPower));
+        result.setMaxTorque(peakTorque);
+        result.setPowerCurveJson(serializeCurveToJson(powerCurve));
+
+        // Tiempos de aceleración
+        result.setTime0to60(calc0toN(maxPower, peakTorque, massKg, 60.0 / 3.6));
+        result.setTime0to100(calc0toN(maxPower, peakTorque, massKg, 100.0 / 3.6));
+
         return result;
     }
 
-    /**
-     * Curva de torque realista:
-     * - Sube rápido desde ralentí (efecto turbo/llenado de cilindros)
-     * - Meseta en el rango medio (donde el motor respira mejor)
-     * - Cae suavemente en RPM altas (pérdidas mecánicas y de llenado)
-     *
-     * Usa una curva logística para la subida + caída exponencial para el drop final.
-     */
-    private double calcTorque(int rpm, double maxTorque, boolean hasTurbo) {
-        double rpmNorm = (double)(rpm - RPM_MIN) / (RPM_MAX - RPM_MIN); // 0..1
-
-        // Punto de pico del torque: ~35-40% del rango RPM (turbo más tarde, NA antes)
-        double peakAt   = hasTurbo ? 0.38 : 0.28;
-        // Anchura de la meseta
-        double plateau  = hasTurbo ? 0.30 : 0.20;
-
-        // Subida: sigmoide
-        double riseK    = hasTurbo ? 14.0 : 18.0;  // pendiente de subida
-        double rise     = 1.0 / (1.0 + Math.exp(-riseK * (rpmNorm - peakAt * 0.5)));
-
-        // Caída: empieza después de la meseta
-        double fallStart = peakAt + plateau;
-        double fallK    = hasTurbo ? 5.0 : 6.5;
-        double fall;
-        if (rpmNorm <= fallStart) {
-            fall = 1.0;
-        } else {
-            fall = Math.exp(-fallK * Math.pow(rpmNorm - fallStart, 1.6));
-        }
-
-        // Torque mínimo en ralentí (~55% del pico)
-        double base = 0.55;
-        double raw  = base + (1.0 - base) * rise * fall;
-
-        return maxTorque * raw;
-    }
-
-    /**
-     * Potencia = Torque × RPM / 5252  (en unidades anglosajones)
-     * En sistema métrico: P(kW) = T(Nm) × ω(rad/s) / 1000
-     * Aquí trabajamos en HP internos, escalados al final.
-     */
-    private double calcPower(int rpm, double torqueAtRpm) {
-        // P ∝ T × RPM — escalamos para que el resultado esté en rango razonable
-        return torqueAtRpm * rpm / 5252.0;
-    }
-
-    // ── Métodos auxiliares para el DynoController ─────────────────────────
-
-    /**
-     * Devuelve la curva de potencia completa (RPM → HP) para animación.
-     * Usa los mismos cálculos que runDyno para que gráfico y resultado coincidan.
-     */
+    /** Curva de potencia (RPM → HP) para la animación del DynoController. */
     public Map<Integer, Double> getPowerCurve(Car car, List<Part> parts) {
-        double maxPower  = car.getBasePower();
-        double maxTorque = car.getBaseTorque();
-        if (parts != null) {
-            for (Part p : parts) {
-                maxPower  += p.getHpDelta();
-                maxTorque += p.getTorqueDelta();
-            }
-        }
-        boolean hasTurbo = parts != null && parts.stream()
-                .anyMatch(p -> p.getType() != null && p.getType().name().equals("TURBO"));
+        double maxPower  = totalPower(car, parts);
+        double maxTorque = totalTorque(car, parts);
+        boolean hasTurbo = hasTurbo(parts);
 
-        Map<Integer, Double> powerCurve = new TreeMap<>();
+        Map<Integer, Double> powerCurve  = new TreeMap<>();
+        Map<Integer, Double> torqueCurve = new TreeMap<>();
         for (int rpm = RPM_MIN; rpm <= RPM_MAX; rpm += RPM_STEP) {
             double t = calcTorque(rpm, maxTorque, hasTurbo);
+            torqueCurve.put(rpm, t);
             powerCurve.put(rpm, calcPower(rpm, t));
         }
         double peakRaw = powerCurve.values().stream()
@@ -138,35 +77,139 @@ public class DynoService {
         return powerCurve;
     }
 
-    /**
-     * Devuelve la curva de torque completa (RPM → Nm) para animación.
-     */
+    /** Curva de torque (RPM → Nm) para la animación del DynoController. */
     public Map<Integer, Double> getTorqueCurve(Car car, List<Part> parts) {
-        double maxTorque = car.getBaseTorque();
-        double maxPower  = car.getBasePower();
-        if (parts != null) {
-            for (Part p : parts) {
-                maxTorque += p.getTorqueDelta();
-                maxPower  += p.getHpDelta();
-            }
-        }
-        boolean hasTurbo = parts != null && parts.stream()
-                .anyMatch(p -> p.getType() != null && p.getType().name().equals("TURBO"));
+        double maxPower  = totalPower(car, parts);
+        double maxTorque = totalTorque(car, parts);
+        boolean hasTurbo = hasTurbo(parts);
 
+        Map<Integer, Double> powerCurve  = new TreeMap<>();
         Map<Integer, Double> torqueCurve = new TreeMap<>();
         for (int rpm = RPM_MIN; rpm <= RPM_MAX; rpm += RPM_STEP) {
-            torqueCurve.put(rpm, calcTorque(rpm, maxTorque, hasTurbo));
-        }
-        // Escalar igual que en runDyno para consistencia
-        Map<Integer, Double> powerCurve = new TreeMap<>();
-        for (int rpm = RPM_MIN; rpm <= RPM_MAX; rpm += RPM_STEP) {
-            powerCurve.put(rpm, calcPower(rpm, torqueCurve.get(rpm)));
+            double t = calcTorque(rpm, maxTorque, hasTurbo);
+            torqueCurve.put(rpm, t);
+            powerCurve.put(rpm, calcPower(rpm, t));
         }
         double peakRaw = powerCurve.values().stream()
                 .mapToDouble(Double::doubleValue).max().orElse(1.0);
         double scale = maxPower / peakRaw;
         torqueCurve.replaceAll((k, v) -> v * scale);
         return torqueCurve;
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    //  Física de aceleración — 0 a N km/h
+    // ════════════════════════════════════════════════════════════════════════
+
+    /**
+     * Integración numérica (dt=5ms) del movimiento del coche desde parado.
+     * Modela: fuerza motriz, límite de adherencia, resistencia aerodinámica,
+     * resistencia de rodadura y pérdida momentánea por cambio de marcha.
+     *
+     * @param maxPowerHp  Potencia máxima en CV
+     * @param maxTorqueNm Torque máximo en Nm
+     * @param massKg      Masa total del coche en kg
+     * @param targetMs    Velocidad objetivo en m/s
+     * @return            Tiempo en segundos, o -1 si no se alcanza
+     */
+    private double calc0toN(double maxPowerHp, double maxTorqueNm,
+                            double massKg, double targetMs) {
+        double maxPowerW     = maxPowerHp * 745.7;
+        double wheelRadius   = 0.30;
+        double gearRatio     = 4.0;
+        double drivetrainEff = 0.88;
+        double cd            = 0.32;
+        double frontalArea   = 2.0;
+        double airDensity    = 1.225;
+        double crr           = 0.013;
+        double g             = 9.81;
+        double gripLimit     = gripEstimate(massKg) * massKg * g;
+
+        double v   = 0.0;
+        double t   = 0.0;
+        double dt  = 0.005;
+        double max = 60.0;
+
+        while (v < targetMs && t < max) {
+            double fEngine;
+            if (v < 0.5) {
+                fEngine = (maxTorqueNm * gearRatio * drivetrainEff) / wheelRadius;
+            } else {
+                fEngine = (maxPowerW * drivetrainEff) / v;
+                fEngine *= gearShiftFactor(v);
+            }
+            fEngine = Math.min(fEngine, gripLimit);
+
+            double fAero  = 0.5 * airDensity * cd * frontalArea * v * v;
+            double fRoll  = crr * massKg * g;
+            double fTotal = fEngine - fAero - fRoll;
+
+            v += Math.max(0, fTotal / massKg) * dt;
+            t += dt;
+        }
+        return t < max ? t : -1;
+    }
+
+    /** Pérdida de tracción al cambiar de marcha (0–1). */
+    private double gearShiftFactor(double v) {
+        double[] shifts = {13.9, 25.0, 38.9, 55.6}; // ~50, 90, 140, 200 km/h
+        for (double sp : shifts) {
+            if (Math.abs(v - sp) < 1.5) return 0.94;
+        }
+        return 1.0;
+    }
+
+    /** Coeficiente de adherencia estimado por masa (más ligero = más grip relativo). */
+    private double gripEstimate(double massKg) {
+        return Math.max(0.9, 1.4 - massKg / 4000.0);
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    //  Curvas de motor
+    // ════════════════════════════════════════════════════════════════════════
+
+    private double calcTorque(int rpm, double maxTorque, boolean hasTurbo) {
+        double norm     = (double)(rpm - RPM_MIN) / (RPM_MAX - RPM_MIN);
+        double peakAt   = hasTurbo ? 0.38 : 0.28;
+        double plateau  = hasTurbo ? 0.30 : 0.20;
+        double riseK    = hasTurbo ? 14.0 : 18.0;
+        double rise     = 1.0 / (1.0 + Math.exp(-riseK * (norm - peakAt * 0.5)));
+        double fallStart = peakAt + plateau;
+        double fallK    = hasTurbo ? 5.0 : 6.5;
+        double fall     = norm <= fallStart ? 1.0
+                : Math.exp(-fallK * Math.pow(norm - fallStart, 1.6));
+        return maxTorque * (0.55 + 0.45 * rise * fall);
+    }
+
+    private double calcPower(int rpm, double torque) {
+        return torque * rpm / 5252.0;
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    //  Helpers
+    // ════════════════════════════════════════════════════════════════════════
+
+    private double totalPower(Car car, List<Part> parts) {
+        double v = car.getBasePower();
+        if (parts != null) for (Part p : parts) v += p.getHpDelta();
+        return v;
+    }
+
+    private double totalTorque(Car car, List<Part> parts) {
+        double v = car.getBaseTorque();
+        if (parts != null) for (Part p : parts) v += p.getTorqueDelta();
+        return v;
+    }
+
+    private double totalMass(Car car, List<Part> parts) {
+        double v = car.getMass();
+        if (parts != null) for (Part p : parts) v += p.getWeightDelta();
+        return v;
+    }
+
+    private boolean hasTurbo(List<Part> parts) {
+        return parts != null && parts.stream()
+                .anyMatch(p -> p.getType() != null && p.getType().name().equals("TURBO"));
     }
 
     private String serializeCurveToJson(Map<Integer, Double> curve) {
@@ -178,7 +221,6 @@ public class DynoService {
                     .append(String.format("%.2f", e.getValue()));
             first = false;
         }
-        sb.append("}");
-        return sb.toString();
+        return sb.append("}").toString();
     }
 }
