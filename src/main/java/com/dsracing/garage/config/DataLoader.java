@@ -51,10 +51,10 @@ public class DataLoader {
         // --- Usuario ---
         User u = new User();
         u.setUsername("alberto");
+        u.setPassword("1234");
         u.setEmail("alberto@example.com");
         u.setRole("USER");
         userRepo.save(u);
-
         // --- Garaje ---
         Garage g = new Garage();
         g.setName("Garaje Central");
