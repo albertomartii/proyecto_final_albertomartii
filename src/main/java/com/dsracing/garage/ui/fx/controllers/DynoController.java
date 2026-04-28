@@ -28,6 +28,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
+import static javax.swing.text.html.CSS.Attribute.BORDER;
+
 /**
  * Ventana de dinamómetro con:
  *  - Gráfico animado de curva de potencia (HP y Torque) que se dibuja en tiempo real
@@ -103,8 +105,13 @@ public class DynoController {
             stage = new Stage();
             stage.setTitle("DS Racing · Dinamómetro — " + car.getMake() + " " + car.getModel());
             stage.setScene(buildScene());
+            stage.setMaximized(false);
             stage.setResizable(false);
+            stage.setWidth(960);
+            stage.setHeight(620);
+            stage.centerOnScreen();
             stage.show();
+            stage.sizeToScene();      // ← añadir
             startDynoAnimation();
         });
     }
@@ -183,7 +190,7 @@ public class DynoController {
         VBox mainBox = new VBox(0, titleBox, centerBox, bottomBar);
         root.setCenter(mainBox);
 
-        return new Scene(root, 980, 430);
+        return new Scene(root, 980, 550);
     }
 
     // ════════════════════════════════════════════════════════════════════════
@@ -609,10 +616,18 @@ public class DynoController {
     //  Exportar CSV
     // ════════════════════════════════════════════════════════════════════════
 
+
     private void exportCsv() {
         if (dynoResult == null) return;
         try {
-            Path file = CsvExporter.exportDyno(car, dynoResult, Path.of("exports"));
+            // Pasamos las curvas completas para que el CSV incluya HP y Nm por RPM
+            Path file = CsvExporter.exportDyno(
+                    car,
+                    dynoResult,
+                    fullPowerCurve,   // Map<Integer,Double> ya calculado
+                    fullTorqueCurve,  // Map<Integer,Double> ya calculado
+                    Path.of("exports")
+            );
             labelStatus.setText("✔  CSV exportado: " + file.getFileName());
             labelStatus.setTextFill(Color.web("#00e676"));
         } catch (Exception ex) {

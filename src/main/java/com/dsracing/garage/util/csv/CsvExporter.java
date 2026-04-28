@@ -28,22 +28,21 @@ public class CsvExporter {
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // DYNO
-    // ─────────────────────────────────────────────────────────────────────────
+    // -------------------------------------------------------------------------
+    // DYNO — incluye comparativa serie vs modificado
+    // -------------------------------------------------------------------------
 
     /**
-     * Exporta el resultado del dinamómetro a CSV.
-     *
-     * Cabecera incluye:
-     *  - Datos del coche
-     *  - Piezas instaladas
-     *  - Max HP / Max Nm / RPM del pico
-     *  - Tiempo 0-60 km/h y 0-100 km/h
-     *
-     * Cuerpo: curva completa rpm → hp
+     * Exporta el resultado del dyno con:
+     *  - Metadatos del coche
+     *  - Comparativa serie vs modificado (HP, Nm, masa, grip)
+     *  - Piezas instaladas con sus deltas
+     *  - Curva completa RPM → HP, Nm
      */
-    public static Path exportDyno(Car car, DynoResult dyno, Path outputDir) throws IOException {
+    public static Path exportDyno(Car car, DynoResult dyno,
+                                  Map<Integer, Double> powerCurve,
+                                  Map<Integer, Double> torqueCurve,
+                                  Path outputDir) throws IOException {
         Files.createDirectories(outputDir);
 
         String filename = String.format("dyno_%s_%s_%s.csv",
@@ -53,74 +52,89 @@ public class CsvExporter {
 
         Path file = outputDir.resolve(filename);
 
+        // Calcular totales con piezas
+        List<Part> parts = car.getParts();
+        double totalHpDelta     = 0;
+        double totalTorqueDelta = 0;
+        double totalWeightDelta = 0;
+        double totalGripDelta   = 0;
+        if (parts != null) {
+            for (Part p : parts) {
+                totalHpDelta     += p.getHpDelta();
+                totalTorqueDelta += p.getTorqueDelta();
+                totalWeightDelta += p.getWeightDelta();
+                totalGripDelta   += p.getGripDelta();
+            }
+        }
+
+        double basePower  = car.getBasePower();
+        double baseTorque = car.getBaseTorque();
+        double baseMass   = car.getMass();
+        double baseGrip   = car.getGripBase();
+
+        double modPower   = basePower  + totalHpDelta;
+        double modTorque  = baseTorque + totalTorqueDelta;
+        double modMass    = baseMass   + totalWeightDelta;
+        double modGrip    = baseGrip   + totalGripDelta;
+
         try (PrintWriter pw = new PrintWriter(
                 Files.newBufferedWriter(file, StandardCharsets.UTF_8))) {
 
-            // ── Bloque 1: metadatos del coche ─────────────────────────────
+            // ── Cabecera general ─────────────────────────────────────────
             pw.println("# DS Racing Garage - Resultado Dyno");
             pw.println("# Fecha," + LocalDateTime.now().format(READABLE_FMT));
             pw.println("# Coche," + car.getMake() + " " + car.getModel()
                     + " (" + car.getYear() + ")");
-            pw.println("# Potencia base (HP),"
-                    + String.format("%.0f", car.getBasePower()));
-            pw.println("# Torque base (Nm),"
-                    + String.format("%.0f", car.getBaseTorque()));
-            pw.println("# Masa base (kg),"
-                    + String.format("%.0f", car.getMass()));
             pw.println("#");
 
-            // ── Bloque 2: piezas instaladas ───────────────────────────────
-            List<Part> parts = car.getParts();
-            if (parts != null && !parts.isEmpty()) {
-                pw.println("# --- MODIFICACIONES ---");
+            // ── Comparativa serie vs modificado ──────────────────────────
+            pw.println("# --- COMPARATIVA SERIE VS MODIFICADO ---");
+            pw.println("# campo,serie,modificado,delta");
+            pw.printf("# Potencia (HP), %.1f, %.1f, %+.1f%n",
+                    basePower, modPower, totalHpDelta);
+            pw.printf("# Torque (Nm), %.1f, %.1f, %+.1f%n",
+                    baseTorque, modTorque, totalTorqueDelta);
+            pw.printf("# Masa (kg), %.1f, %.1f, %+.1f%n",
+                    baseMass, modMass, totalWeightDelta);
+            pw.printf("# Grip (coef), %.3f, %.3f, %+.3f%n",
+                    baseGrip, modGrip, totalGripDelta);
+            pw.println("#");
+
+            // ── Piezas instaladas ─────────────────────────────────────────
+            pw.println("# --- PIEZAS INSTALADAS ---");
+            if (parts == null || parts.isEmpty()) {
+                pw.println("# (ninguna — coche de serie)");
+            } else {
+                pw.println("# nombre,tipo,hp_delta,torque_delta,peso_delta,grip_delta");
                 for (Part p : parts) {
-                    StringBuilder sb = new StringBuilder();
-                    sb.append("# ").append(p.getType().name())
-                            .append(",").append(p.getName());
-                    if (p.getHpDelta()    != 0) sb.append(",+").append(String.format("%.0f", p.getHpDelta())).append(" HP");
-                    if (p.getTorqueDelta() != 0) sb.append(",+").append(String.format("%.0f", p.getTorqueDelta())).append(" Nm");
-                    if (p.getWeightDelta() != 0) sb.append(",").append(String.format("%.0f", p.getWeightDelta())).append(" kg");
-                    pw.println(sb);
+                    pw.printf("# %s,%s,%+.0f,%+.0f,%+.0f,%+.3f%n",
+                            p.getName(),
+                            p.getType().name(),
+                            p.getHpDelta(),
+                            p.getTorqueDelta(),
+                            p.getWeightDelta(),
+                            p.getGripDelta());
                 }
-            } else {
-                pw.println("# Modificaciones,Ninguna (stock)");
             }
             pw.println("#");
 
-            // ── Bloque 3: resultados de la prueba ─────────────────────────
-            pw.println("# --- RESULTADOS ---");
-            pw.println("# Max Potencia (HP),"
-                    + String.format("%.1f", dyno.getMaxPower()));
-            pw.println("# Max Torque (Nm),"
-                    + String.format("%.1f", dyno.getMaxTorque()));
-
-            // RPM del pico de potencia
-            Map<Integer, Double> curve = parsePowerCurve(dyno.getPowerCurveJson());
-            int peakRpm = curve.entrySet().stream()
-                    .max(Map.Entry.comparingByValue())
-                    .map(Map.Entry::getKey)
-                    .orElse(0);
-            pw.println("# RPM del pico de potencia," + peakRpm);
-
-            // Tiempos de aceleración
-            if (dyno.getTime0to60() > 0) {
-                pw.println("# 0-60 km/h (s),"
-                        + String.format("%.2f", dyno.getTime0to60()));
-            } else {
-                pw.println("# 0-60 km/h (s),N/A");
-            }
-            if (dyno.getTime0to100() > 0) {
-                pw.println("# 0-100 km/h (s),"
-                        + String.format("%.2f", dyno.getTime0to100()));
-            } else {
-                pw.println("# 0-100 km/h (s),N/A");
-            }
+            // ── Resumen del pico ──────────────────────────────────────────
+            pw.println("# --- RESULTADOS PICO ---");
+            pw.printf("# Max Power (HP),%.2f%n", dyno.getMaxPower());
+            pw.printf("# Max Torque (Nm),%.2f%n", dyno.getMaxTorque());
             pw.println("#");
 
-            // ── Curva de potencia ─────────────────────────────────────────
-            pw.println("rpm,power_hp");
-            for (Map.Entry<Integer, Double> entry : curve.entrySet()) {
-                pw.printf("%d,%.2f%n", entry.getKey(), entry.getValue());
+            // ── Curva completa RPM → HP y Nm ─────────────────────────────
+            pw.println("rpm,power_hp,torque_nm");
+            Map<Integer, Double> sortedPower  = new TreeMap<>(
+                    powerCurve  != null ? powerCurve  : new TreeMap<>());
+            Map<Integer, Double> sortedTorque = new TreeMap<>(
+                    torqueCurve != null ? torqueCurve : new TreeMap<>());
+
+            for (Integer rpm : sortedPower.keySet()) {
+                double hp = sortedPower.getOrDefault(rpm, 0.0);
+                double nm = sortedTorque.getOrDefault(rpm, 0.0);
+                pw.printf("%d,%.2f,%.2f%n", rpm, hp, nm);
             }
         }
 
@@ -128,9 +142,17 @@ public class CsvExporter {
         return file;
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
+    /**
+     * Sobrecarga de compatibilidad — sin curvas detalladas (usa powerCurveJson).
+     * Se mantiene para no romper llamadas existentes.
+     */
+    public static Path exportDyno(Car car, DynoResult dyno, Path outputDir) throws IOException {
+        return exportDyno(car, dyno, parsePowerCurve(dyno.getPowerCurveJson()), null, outputDir);
+    }
+
+    // -------------------------------------------------------------------------
     // DRIFT
-    // ─────────────────────────────────────────────────────────────────────────
+    // -------------------------------------------------------------------------
 
     public static Path exportDrift(Car car, DriftRun driftRun, Path outputDir) throws IOException {
         Files.createDirectories(outputDir);
@@ -138,9 +160,10 @@ public class CsvExporter {
         String timestamp = LocalDateTime.now().format(TIMESTAMP_FMT);
         String carTag    = sanitize(car.getMake()) + "_" + sanitize(car.getModel());
 
-        // Resumen
+        // --- Resumen ---
         Path summaryFile = outputDir.resolve(
                 String.format("drift_summary_%s_%s.csv", carTag, timestamp));
+
         try (PrintWriter pw = new PrintWriter(
                 Files.newBufferedWriter(summaryFile, StandardCharsets.UTF_8))) {
             pw.println("# DS Racing Garage - Resumen Drift Run");
@@ -152,12 +175,13 @@ public class CsvExporter {
             pw.printf("score,%.2f%n",        driftRun.getScore());
             pw.printf("max_angle_deg,%.2f%n", driftRun.getMaxAngle());
             pw.printf("avg_lateral_g,%.3f%n", driftRun.getAvgLateralG());
-            pw.printf("duration_ms,%d%n",     driftRun.getDurationMs());
+            pw.printf("duration_ms,%d%n",      driftRun.getDurationMs());
         }
 
-        // Telemetría
+        // --- Telemetría ---
         Path telemetryFile = outputDir.resolve(
                 String.format("drift_telemetry_%s_%s.csv", carTag, timestamp));
+
         try (PrintWriter pw = new PrintWriter(
                 Files.newBufferedWriter(telemetryFile, StandardCharsets.UTF_8))) {
             pw.println("# DS Racing Garage - Telemetría Drift Run");
@@ -179,9 +203,9 @@ public class CsvExporter {
         return telemetryFile;
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
+    // -------------------------------------------------------------------------
     // Utilidades privadas
-    // ─────────────────────────────────────────────────────────────────────────
+    // -------------------------------------------------------------------------
 
     private static Map<Integer, Double> parsePowerCurve(String json) {
         if (json == null || json.isBlank()) return new TreeMap<>();
