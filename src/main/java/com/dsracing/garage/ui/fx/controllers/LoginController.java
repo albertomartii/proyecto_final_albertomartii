@@ -12,6 +12,7 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
+import javafx.scene.image.ImageView;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
@@ -23,7 +24,6 @@ import java.util.Optional;
 
 public class LoginController {
 
-    // ── Colores ───────────────────────────────────────────────────────────────
     private static final String BG_DARK    = "#0d0d0f";
     private static final String BG_PANEL   = "#13131a";
     private static final String ACCENT_RED = "#e8002d";
@@ -32,29 +32,27 @@ public class LoginController {
     private static final String TEXT_GRAY  = "#666680";
     private static final String BORDER     = "#2a2a3a";
 
-    // ── Coches de serie ───────────────────────────────────────────────────────
     private static final String[][] STARTER_CARS = {
             {"Nissan",  "S13",          "1992", "200", "250", "1200", "1.0", "0.50"},
             {"Honda",   "Civic Type R", "2001", "185", "190", "1100", "1.0", "0.62"},
             {"Subaru",  "Impreza WRX",  "2003", "230", "310", "1400", "1.0", "0.55"},
-            {"Citröen", "C4 Coupé", "2025", "150", "250", "1230", "2.0", "0.70"},
-            {"BMW", "E39", "1999", "193", "200", "1500", "1.0", "0.50"}
+            {"Citroen", "C4 Coupe",     "2025", "150", "250", "1230", "2.0", "0.70"},
+            {"BMW",     "E39",          "1999", "193", "200", "1500", "1.0", "0.50"}
     };
 
-    // ── Dependencias ──────────────────────────────────────────────────────────
     private Stage        stage;
     private User         currentUser;
     private final UserService    userService;
     private final CarService     carService;
     private final DynoService    dynoService;
     private final GarageService  garageService;
-    private final PartRepository partRepository; // ← NUEVO
+    private final PartRepository partRepository;
 
     public LoginController(UserService userService,
                            CarService carService,
                            DynoService dynoService,
                            GarageService garageService,
-                           PartRepository partRepository) {  // ← NUEVO parámetro
+                           PartRepository partRepository) {
         this.userService    = userService;
         this.carService     = carService;
         this.dynoService    = dynoService;
@@ -63,24 +61,19 @@ public class LoginController {
     }
 
     // ════════════════════════════════════════════════════════════════════════
-    //  Mostrar pantalla de login
+    //  Login
     // ════════════════════════════════════════════════════════════════════════
 
     public void show(Stage primaryStage) {
         this.stage = primaryStage;
         stage.setTitle("DS Racing · Login");
         stage.setScene(buildLoginScene());
-        stage.setMaximized(false);
         stage.setResizable(false);
         stage.setWidth(1920);
         stage.setHeight(1080);
         stage.centerOnScreen();
         stage.show();
     }
-
-    // ════════════════════════════════════════════════════════════════════════
-    //  Escena de Login
-    // ════════════════════════════════════════════════════════════════════════
 
     private Scene buildLoginScene() {
         Label dsLabel = new Label("DS");
@@ -104,7 +97,6 @@ public class LoginController {
 
         Label userLabel = makeFieldLabel("USUARIO");
         TextField userField = makeTextField("Introduce tu usuario");
-
         Label passLabel = makeFieldLabel("CONTRASEÑA");
         PasswordField passField = makePasswordField("Introduce tu contraseña");
 
@@ -121,10 +113,7 @@ public class LoginController {
         btnLogin.setOnAction(e -> {
             String user = userField.getText().trim();
             String pass = passField.getText();
-            if (user.isEmpty() || pass.isEmpty()) {
-                errorLabel.setText("Rellena todos los campos.");
-                return;
-            }
+            if (user.isEmpty() || pass.isEmpty()) { errorLabel.setText("Rellena todos los campos."); return; }
             Optional<User> result = userService.login(user, pass);
             if (result.isPresent()) {
                 showGarageScene(result.get());
@@ -137,25 +126,16 @@ public class LoginController {
         btnRegister.setOnAction(e -> {
             String user = userField.getText().trim();
             String pass = passField.getText();
-            if (user.isEmpty() || pass.isEmpty()) {
-                errorLabel.setText("Rellena todos los campos.");
-                return;
-            }
-            if (userService.existsByUsername(user)) {
-                errorLabel.setText("Ese usuario ya existe.");
-                return;
-            }
+            if (user.isEmpty() || pass.isEmpty()) { errorLabel.setText("Rellena todos los campos."); return; }
+            if (userService.existsByUsername(user)) { errorLabel.setText("Ese usuario ya existe."); return; }
             User newUser = userService.register(user, pass, user + "@dsracing.com");
             showGarageScene(newUser);
         });
 
         passField.setOnAction(e -> btnLogin.fire());
 
-        VBox form = new VBox(10,
-                userLabel, userField,
-                passLabel, passField,
-                errorLabel,
-                btnLogin, btnRegister);
+        VBox form = new VBox(10, userLabel, userField, passLabel, passField,
+                errorLabel, btnLogin, btnRegister);
         form.setMaxWidth(360);
         form.setPadding(new Insets(28));
         form.setStyle("-fx-background-color:" + BG_PANEL + ";" +
@@ -164,7 +144,6 @@ public class LoginController {
 
         VBox root = new VBox(headerBox, form);
         root.setAlignment(Pos.CENTER);
-        root.setSpacing(0);
         root.setPadding(new Insets(60));
         root.setStyle("-fx-background-color:" + BG_DARK + ";");
 
@@ -172,7 +151,7 @@ public class LoginController {
     }
 
     // ════════════════════════════════════════════════════════════════════════
-    //  Escena del Garaje
+    //  Garaje
     // ════════════════════════════════════════════════════════════════════════
 
     private void showGarageScene(User user) {
@@ -201,9 +180,8 @@ public class LoginController {
             root.getChildren().add(makeDivider());
         }
 
-        Label newBuildLabel = makeFieldLabel(
-                myCars.isEmpty() ? "ELIGE TU PRIMER COCHE" : "+ CREAR NUEVA BUILD");
-        root.getChildren().add(newBuildLabel);
+        root.getChildren().add(makeFieldLabel(
+                myCars.isEmpty() ? "ELIGE TU PRIMER COCHE" : "+ CREAR NUEVA BUILD"));
         for (String[] carData : STARTER_CARS) {
             root.getChildren().add(buildStarterCarCard(carData, user));
         }
@@ -214,17 +192,40 @@ public class LoginController {
 
         stage.setScene(new Scene(scroll, 760, 620));
         stage.setResizable(true);
+        stage.setWidth(1920);
+        stage.setHeight(1080);
+        stage.centerOnScreen();
         stage.setTitle("DS Racing · Garaje de " + user.getUsername());
     }
 
     // ════════════════════════════════════════════════════════════════════════
-    //  Tarjeta de coche existente
+    //  Tarjeta de coche existente (MIS COCHES)
     // ════════════════════════════════════════════════════════════════════════
 
     private HBox buildCarCard(Car car, User user) {
+        // ── Pixelart ──────────────────────────────────────────────────────
+        ImageView carImage = new ImageView();
+        String imageKey = car.getMake().toLowerCase()
+                .replace("citroen", "citroen")
+                .replace("ö", "o")
+                .split(" ")[0];
+        try {
+            var stream = getClass().getResourceAsStream("/images/cars/" + imageKey + ".png");
+            if (stream != null) {
+                carImage.setImage(new javafx.scene.image.Image(stream));
+                carImage.setFitHeight(40);
+                carImage.setPreserveRatio(true);
+                carImage.setSmooth(false);
+            }
+        } catch (Exception ignored) {}
+
+        // ── Info ──────────────────────────────────────────────────────────
         Label name = new Label(car.getMake().toUpperCase() + "  " + car.getModel().toUpperCase());
         name.setFont(Font.font("Monospace", FontWeight.BOLD, 16));
         name.setTextFill(Color.web(TEXT_WHITE));
+
+        HBox nameRow = new HBox(12, carImage, name);
+        nameRow.setAlignment(Pos.CENTER_LEFT);
 
         Label yearLbl = new Label(String.valueOf(car.getYear()));
         yearLbl.setFont(Font.font("Monospace", 12));
@@ -233,9 +234,7 @@ public class LoginController {
         double hp = car.getBasePower(), torque = car.getBaseTorque(), mass = car.getMass();
         if (car.getParts() != null) {
             for (var p : car.getParts()) {
-                hp     += p.getHpDelta();
-                torque += p.getTorqueDelta();
-                mass   += p.getWeightDelta();
+                hp += p.getHpDelta(); torque += p.getTorqueDelta(); mass += p.getWeightDelta();
             }
         }
         Label stats = new Label(String.format("%.0f HP  ·  %.0f Nm  ·  %.0f kg", hp, torque, mass));
@@ -248,10 +247,10 @@ public class LoginController {
         partsBadge.setFont(Font.font("Monospace", 9));
         partsBadge.setTextFill(Color.web(partsCount > 0 ? "#00e676" : TEXT_GRAY));
 
-        VBox info = new VBox(4, name, yearLbl, stats, partsBadge);
+        VBox info = new VBox(4, nameRow, yearLbl, stats, partsBadge);
         info.setAlignment(Pos.CENTER_LEFT);
 
-        // ── Botón PIEZAS ──────────────────────────────────────────────────────
+        // ── Botones ───────────────────────────────────────────────────────
         Button btnParts = new Button("⚙  PIEZAS");
         btnParts.setStyle(
                 "-fx-background-color:#1a1a2a; -fx-text-fill:#00c8ff;" +
@@ -260,44 +259,37 @@ public class LoginController {
                         "-fx-padding:9 16; -fx-border-radius:4; -fx-background-radius:4; -fx-cursor:hand;");
         btnParts.setOnAction(e -> openPartEditor(car, user));
 
-        // ── Botón DYNO TEST ───────────────────────────────────────────────────
         Button btnDyno = makeButton("▶  DYNO TEST", ACCENT_RED);
         btnDyno.setMaxWidth(140);
         btnDyno.setOnAction(e -> launchDyno(car));
 
-        // ── Botón BORRAR ──────────────────────────────────────────────────────
         Button btnDelete = new Button("✕");
         btnDelete.setStyle(
                 "-fx-background-color:transparent; -fx-text-fill:#444460;" +
                         "-fx-border-color:transparent; -fx-font-size:16;" +
                         "-fx-padding:4 8; -fx-cursor:hand;");
-        btnDelete.setOnMouseEntered(e ->
-                btnDelete.setStyle(
-                        "-fx-background-color:#2a0010; -fx-text-fill:" + ACCENT_RED + ";" +
-                                "-fx-border-color:" + ACCENT_RED + "; -fx-border-width:1;" +
-                                "-fx-border-radius:4; -fx-background-radius:4;" +
-                                "-fx-font-size:16; -fx-padding:4 8; -fx-cursor:hand;"));
-        btnDelete.setOnMouseExited(e ->
-                btnDelete.setStyle(
-                        "-fx-background-color:transparent; -fx-text-fill:#5f5f6a;" +
-                                "-fx-border-color:transparent; -fx-font-size:16;" +
-                                "-fx-padding:4 8; -fx-cursor:hand;"));
+        btnDelete.setOnMouseEntered(e -> btnDelete.setStyle(
+                "-fx-background-color:#2a0010; -fx-text-fill:" + ACCENT_RED + ";" +
+                        "-fx-border-color:" + ACCENT_RED + "; -fx-border-width:1;" +
+                        "-fx-border-radius:4; -fx-background-radius:4;" +
+                        "-fx-font-size:16; -fx-padding:4 8; -fx-cursor:hand;"));
+        btnDelete.setOnMouseExited(e -> btnDelete.setStyle(
+                "-fx-background-color:transparent; -fx-text-fill:#444460;" +
+                        "-fx-border-color:transparent; -fx-font-size:16;" +
+                        "-fx-padding:4 8; -fx-cursor:hand;"));
         btnDelete.setOnAction(e -> {
-            // Diálogo de confirmación antes de borrar
             Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
             confirm.setTitle("Borrar coche");
             confirm.setHeaderText(car.getMake() + " " + car.getModel() + " (" + car.getYear() + ")");
             confirm.setContentText("¿Seguro que quieres borrar este coche? Esta acción no se puede deshacer.");
-            confirm.getDialogPane().setStyle("-fx-background-color:#13131a; -fx-font-family:Monospace;");
             confirm.showAndWait().ifPresent(response -> {
                 if (response == ButtonType.OK) {
                     carService.deleteById(car.getId());
-                    showGarageScene(user); // recargar el garaje
+                    showGarageScene(user);
                 }
             });
         });
 
-        // ── Layout de botones: papelera arriba a la derecha, PIEZAS y DYNO abajo ──
         VBox buttons = new VBox(8, btnParts, btnDyno);
         buttons.setAlignment(Pos.CENTER_RIGHT);
 
@@ -311,24 +303,11 @@ public class LoginController {
         card.setStyle("-fx-background-color:" + BG_PANEL + ";" +
                 "-fx-border-color:" + BORDER + "; -fx-border-width:1;" +
                 "-fx-border-radius:6; -fx-background-radius:6;");
-
         return card;
     }
 
     // ════════════════════════════════════════════════════════════════════════
-    //  Abrir editor de piezas — CORREGIDO: pasa partRepository
-    // ════════════════════════════════════════════════════════════════════════
-
-    private void openPartEditor(Car car, User user) {
-        PartEditorController editor = new PartEditorController();
-        editor.show(car, carService, dynoService, partRepository, savedCar -> {
-            // Recargar el garaje para reflejar los cambios guardados
-            showGarageScene(user);
-        });
-    }
-
-    // ════════════════════════════════════════════════════════════════════════
-    //  Tarjeta de coche starter
+    //  Tarjeta starter (CREAR NUEVA BUILD)
     // ════════════════════════════════════════════════════════════════════════
 
     private HBox buildStarterCarCard(String[] data, User user) {
@@ -339,9 +318,29 @@ public class LoginController {
         double torque = Double.parseDouble(data[4]);
         double mass   = Double.parseDouble(data[5]);
 
+        // ── Pixelart ──────────────────────────────────────────────────────
+        ImageView carImage = new ImageView();
+        String imageKey = make.toLowerCase()
+                .replace("citroen", "citroen")
+                .replace("ö", "o")
+                .split(" ")[0];
+        try {
+            var stream = getClass().getResourceAsStream("/images/cars/" + imageKey + ".png");
+            if (stream != null) {
+                carImage.setImage(new javafx.scene.image.Image(stream));
+                carImage.setFitHeight(40);
+                carImage.setPreserveRatio(true);
+                carImage.setSmooth(false);
+            }
+        } catch (Exception ignored) {}
+
+        // ── Info ──────────────────────────────────────────────────────────
         Label name = new Label(make.toUpperCase() + "  " + model.toUpperCase());
         name.setFont(Font.font("Monospace", FontWeight.BOLD, 16));
         name.setTextFill(Color.web(TEXT_WHITE));
+
+        HBox nameRow = new HBox(12, carImage, name);
+        nameRow.setAlignment(Pos.CENTER_LEFT);
 
         Label yearLabel = new Label(year);
         yearLabel.setFont(Font.font("Monospace", 12));
@@ -353,7 +352,7 @@ public class LoginController {
 
         HBox statBars = buildStatBars(hp, torque, mass);
 
-        VBox info = new VBox(4, name, yearLabel, stats, statBars);
+        VBox info = new VBox(4, nameRow, yearLabel, stats, statBars);
         info.setAlignment(Pos.CENTER_LEFT);
 
         Button btn = makeButton("ELEGIR", ACCENT_YEL);
@@ -382,6 +381,11 @@ public class LoginController {
     //  Lógica
     // ════════════════════════════════════════════════════════════════════════
 
+    private void openPartEditor(Car car, User user) {
+        PartEditorController editor = new PartEditorController();
+        editor.show(car, carService, dynoService, partRepository, savedCar -> showGarageScene(user));
+    }
+
     private void selectStarterCar(String[] data, User user) {
         Car car = new Car();
         car.setMake(data[0]);
@@ -392,18 +396,14 @@ public class LoginController {
         car.setMass(Double.parseDouble(data[5]));
         car.setGripBase(Double.parseDouble(data[6]));
         car.setWeightDistributionFront(Double.parseDouble(data[7]));
-
         Garage garage = garageService.getOrCreateGarageForUser(user);
         car.setGarage(garage);
-
-        Car saved = carService.save(car);
-        // Recargar el garaje para mostrar el coche recién añadido
+        carService.save(car);
         showGarageScene(user);
     }
 
     private void launchDyno(Car car) {
-        DynoController dynoController = new DynoController();
-        dynoController.show(car, dynoService);
+        new DynoController().show(car, dynoService);
     }
 
     // ════════════════════════════════════════════════════════════════════════
@@ -426,18 +426,14 @@ public class LoginController {
         Label lbl = new Label(label);
         lbl.setFont(Font.font("Monospace", 9));
         lbl.setTextFill(Color.web(TEXT_GRAY));
-
         Pane bg = new Pane();
         bg.setPrefSize(60, 5);
         bg.setStyle("-fx-background-color:#1e1e2e; -fx-background-radius:3;");
-
         Pane fill = new Pane();
         fill.setPrefSize(60 * pct, 5);
         fill.setStyle("-fx-background-color:" + color + "; -fx-background-radius:3;");
-
         StackPane barPane = new StackPane(bg, fill);
         StackPane.setAlignment(fill, Pos.CENTER_LEFT);
-
         return new VBox(2, lbl, barPane);
     }
 
