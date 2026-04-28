@@ -70,7 +70,11 @@ public class LoginController {
         this.stage = primaryStage;
         stage.setTitle("DS Racing · Login");
         stage.setScene(buildLoginScene());
+        stage.setMaximized(false);
         stage.setResizable(false);
+        stage.setWidth(1920);
+        stage.setHeight(1080);
+        stage.centerOnScreen();
         stage.show();
     }
 
@@ -247,6 +251,7 @@ public class LoginController {
         VBox info = new VBox(4, name, yearLbl, stats, partsBadge);
         info.setAlignment(Pos.CENTER_LEFT);
 
+        // ── Botón PIEZAS ──────────────────────────────────────────────────────
         Button btnParts = new Button("⚙  PIEZAS");
         btnParts.setStyle(
                 "-fx-background-color:#1a1a2a; -fx-text-fill:#00c8ff;" +
@@ -255,14 +260,51 @@ public class LoginController {
                         "-fx-padding:9 16; -fx-border-radius:4; -fx-background-radius:4; -fx-cursor:hand;");
         btnParts.setOnAction(e -> openPartEditor(car, user));
 
+        // ── Botón DYNO TEST ───────────────────────────────────────────────────
         Button btnDyno = makeButton("▶  DYNO TEST", ACCENT_RED);
         btnDyno.setMaxWidth(140);
         btnDyno.setOnAction(e -> launchDyno(car));
 
+        // ── Botón BORRAR ──────────────────────────────────────────────────────
+        Button btnDelete = new Button("✕");
+        btnDelete.setStyle(
+                "-fx-background-color:transparent; -fx-text-fill:#444460;" +
+                        "-fx-border-color:transparent; -fx-font-size:16;" +
+                        "-fx-padding:4 8; -fx-cursor:hand;");
+        btnDelete.setOnMouseEntered(e ->
+                btnDelete.setStyle(
+                        "-fx-background-color:#2a0010; -fx-text-fill:" + ACCENT_RED + ";" +
+                                "-fx-border-color:" + ACCENT_RED + "; -fx-border-width:1;" +
+                                "-fx-border-radius:4; -fx-background-radius:4;" +
+                                "-fx-font-size:16; -fx-padding:4 8; -fx-cursor:hand;"));
+        btnDelete.setOnMouseExited(e ->
+                btnDelete.setStyle(
+                        "-fx-background-color:transparent; -fx-text-fill:#5f5f6a;" +
+                                "-fx-border-color:transparent; -fx-font-size:16;" +
+                                "-fx-padding:4 8; -fx-cursor:hand;"));
+        btnDelete.setOnAction(e -> {
+            // Diálogo de confirmación antes de borrar
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
+            confirm.setTitle("Borrar coche");
+            confirm.setHeaderText(car.getMake() + " " + car.getModel() + " (" + car.getYear() + ")");
+            confirm.setContentText("¿Seguro que quieres borrar este coche? Esta acción no se puede deshacer.");
+            confirm.getDialogPane().setStyle("-fx-background-color:#13131a; -fx-font-family:Monospace;");
+            confirm.showAndWait().ifPresent(response -> {
+                if (response == ButtonType.OK) {
+                    carService.deleteById(car.getId());
+                    showGarageScene(user); // recargar el garaje
+                }
+            });
+        });
+
+        // ── Layout de botones: papelera arriba a la derecha, PIEZAS y DYNO abajo ──
         VBox buttons = new VBox(8, btnParts, btnDyno);
         buttons.setAlignment(Pos.CENTER_RIGHT);
 
-        HBox card = new HBox(info, new Region(), buttons);
+        VBox rightBox = new VBox(4, btnDelete, buttons);
+        rightBox.setAlignment(Pos.TOP_RIGHT);
+
+        HBox card = new HBox(info, new Region(), rightBox);
         HBox.setHgrow(info, Priority.ALWAYS);
         card.setAlignment(Pos.CENTER_LEFT);
         card.setPadding(new Insets(16, 20, 16, 20));
